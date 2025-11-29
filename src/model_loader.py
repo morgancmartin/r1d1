@@ -39,7 +39,7 @@ class ModelLoader:
         # Convert dtype string to torch dtype
         torch_dtype = getattr(torch, dtype)
         
-        # Try loading - if model not in whitelist, load from HuggingFace directly
+        # Try loading - if model not in whitelist, use alternative approach
         try:
             model = HookedTransformer.from_pretrained(
                 hf_name,
@@ -48,27 +48,36 @@ class ModelLoader:
             )
         except (ValueError, KeyError) as e:
             if "not found" in str(e) or "Valid official model names" in str(e):
-                print(f"Model not in TransformerLens whitelist. Loading directly from HuggingFace...")
-                # Load using HuggingFace transformers, then wrap in HookedTransformer
-                hf_model = AutoModelForCausalLM.from_pretrained(
-                    hf_name,
-                    torch_dtype=torch_dtype,
-                    device_map=device,
-                )
-                tokenizer = AutoTokenizer.from_pretrained(hf_name)
-                
-                # Convert to HookedTransformer
-                model = HookedTransformer.from_pretrained(
-                    hf_name,
-                    hf_model=hf_model,
-                    tokenizer=tokenizer,
-                    device=device,
-                    torch_dtype=torch_dtype,
-                    fold_ln=False,
-                    center_writing_weights=False,
-                    center_unembed=False,
-                )
-                print(f"Successfully loaded {hf_name} via HuggingFace")
+                print(f"Model not in TransformerLens whitelist. Trying with trust_remote_code...")
+                # Try with trust_remote_code for newer models
+                try:
+                    model = HookedTransformer.from_pretrained(
+                        hf_name,
+                        device=device,
+                        torch_dtype=torch_dtype,
+                        trust_remote_code=True,
+                    )
+                    print(f"Successfully loaded {hf_name} with trust_remote_code")
+                except Exception as e2:
+                    print(f"Failed with trust_remote_code. Trying direct HuggingFace load...")
+                    # Load the model and tokenizer separately using HuggingFace
+                    hf_model = AutoModelForCausalLM.from_pretrained(
+                        hf_name,
+                        torch_dtype=torch_dtype,
+                        trust_remote_code=True,
+                        device_map="auto",
+                    )
+                    tokenizer = AutoTokenizer.from_pretrained(hf_name, trust_remote_code=True)
+                    
+                    # Wrap in HookedTransformer using from_pretrained_no_processing
+                    print("Wrapping HuggingFace model in HookedTransformer...")
+                    model = HookedTransformer(
+                        hf_model.config,
+                        tokenizer=tokenizer,
+                        move_to_device=False,  # Already on device
+                    )
+                    model.model = hf_model
+                    print(f"Successfully loaded {hf_name} via HuggingFace")
             else:
                 raise
         
