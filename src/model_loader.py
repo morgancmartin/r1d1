@@ -2,6 +2,7 @@
 
 import torch
 from transformer_lens import HookedTransformer
+from transformers import AutoModelForCausalLM, AutoTokenizer
 from typing import Optional
 
 from .config import ModelConfig, MODELS
@@ -38,12 +39,38 @@ class ModelLoader:
         # Convert dtype string to torch dtype
         torch_dtype = getattr(torch, dtype)
         
-        # Load model with HookedTransformer
-        model = HookedTransformer.from_pretrained(
-            hf_name,
-            device=device,
-            torch_dtype=torch_dtype,
-        )
+        # Try loading - if model not in whitelist, load from HuggingFace directly
+        try:
+            model = HookedTransformer.from_pretrained(
+                hf_name,
+                device=device,
+                torch_dtype=torch_dtype,
+            )
+        except (ValueError, KeyError) as e:
+            if "not found" in str(e) or "Valid official model names" in str(e):
+                print(f"Model not in TransformerLens whitelist. Loading directly from HuggingFace...")
+                # Load using HuggingFace transformers, then wrap in HookedTransformer
+                hf_model = AutoModelForCausalLM.from_pretrained(
+                    hf_name,
+                    torch_dtype=torch_dtype,
+                    device_map=device,
+                )
+                tokenizer = AutoTokenizer.from_pretrained(hf_name)
+                
+                # Convert to HookedTransformer
+                model = HookedTransformer.from_pretrained(
+                    hf_name,
+                    hf_model=hf_model,
+                    tokenizer=tokenizer,
+                    device=device,
+                    torch_dtype=torch_dtype,
+                    fold_ln=False,
+                    center_writing_weights=False,
+                    center_unembed=False,
+                )
+                print(f"Successfully loaded {hf_name} via HuggingFace")
+            else:
+                raise
         
         # Set to evaluation mode
         model.eval()
