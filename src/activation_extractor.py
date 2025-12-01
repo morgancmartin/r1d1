@@ -102,9 +102,29 @@ class ActivationExtractor:
                 # Concatenate batch dimension
                 activations[key].extend(batch_activations[key])
         
-        # Stack all activations
+        # Stack all activations - handle variable sequence lengths by padding
         for key in activations:
-            activations[key] = torch.cat(activations[key], dim=0)
+            if len(activations[key]) == 0:
+                continue
+            
+            # Find max sequence length
+            max_seq_len = max(act.shape[1] for act in activations[key])
+            
+            # Pad all activations to max length
+            padded_acts = []
+            for act in activations[key]:
+                if act.shape[1] < max_seq_len:
+                    # Pad on the sequence dimension
+                    pad_size = max_seq_len - act.shape[1]
+                    padding = torch.zeros(
+                        act.shape[0], pad_size, act.shape[2],
+                        dtype=act.dtype, device=act.device
+                    )
+                    act = torch.cat([act, padding], dim=1)
+                padded_acts.append(act)
+            
+            # Now concatenate
+            activations[key] = torch.cat(padded_acts, dim=0)
         
         return activations
     
