@@ -18,7 +18,7 @@ def main():
         strengths=[-0.1, 0.1],  # Just two strengths (suppress vs enhance)
         activation_points=["pre"],  # Just pre-attention
         direction_types=["difference"],  # Just the main direction
-        max_new_tokens=200,  # Slightly shorter for speed
+        max_new_tokens=512,  # Enough for complex reasoning + answer
     )
     
     data_config = DataConfig(

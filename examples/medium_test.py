@@ -18,7 +18,7 @@ def main():
         strengths=[-0.15, -0.1, 0.1, 0.15],  # Test a range including stronger values
         activation_points=["pre"],  # Just pre-attention
         direction_types=["difference"],  # Just the main direction
-        max_new_tokens=256,  # Reasonable length
+        max_new_tokens=512,  # Enough for complex reasoning
     )
     
     data_config = DataConfig(
