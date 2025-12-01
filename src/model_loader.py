@@ -59,7 +59,7 @@ class ModelLoader:
                     )
                     print(f"Successfully loaded {hf_name} with trust_remote_code")
                 except Exception as e2:
-                    print(f"Failed with trust_remote_code. Trying direct HuggingFace load...")
+                    print(f"Failed with trust_remote_code. Trying HookedTransformer.from_pretrained with hf_model...")
                     # Load the model and tokenizer separately using HuggingFace
                     hf_model = AutoModelForCausalLM.from_pretrained(
                         hf_name,
@@ -69,15 +69,31 @@ class ModelLoader:
                     )
                     tokenizer = AutoTokenizer.from_pretrained(hf_name, trust_remote_code=True)
                     
-                    # Wrap in HookedTransformer using from_pretrained_no_processing
+                    # Try passing the loaded model to from_pretrained
                     print("Wrapping HuggingFace model in HookedTransformer...")
-                    model = HookedTransformer(
-                        hf_model.config,
-                        tokenizer=tokenizer,
-                        move_to_device=False,  # Already on device
-                    )
-                    model.model = hf_model
-                    print(f"Successfully loaded {hf_name} via HuggingFace")
+                    try:
+                        model = HookedTransformer.from_pretrained(
+                            hf_name,
+                            hf_model=hf_model,
+                            tokenizer=tokenizer,
+                            device=device,
+                            torch_dtype=torch_dtype,
+                            fold_ln=False,
+                            center_writing_weights=False,
+                            center_unembed=False,
+                        )
+                        print(f"Successfully loaded {hf_name} via HuggingFace with HookedTransformer wrapper")
+                    except Exception as e3:
+                        print(f"TransformerLens wrapping also failed: {e3}")
+                        print(f"Returning raw HuggingFace model (hooks may not work perfectly)")
+                        # Return the HF model directly - we'll need to handle hooks differently
+                        model = hf_model
+                        model.tokenizer = tokenizer
+                        # Add a fake cfg for compatibility
+                        model.cfg = type('obj', (object,), {
+                            'n_layers': len(hf_model.model.layers) if hasattr(hf_model, 'model') else hf_model.config.num_hidden_layers,
+                            'd_model': hf_model.config.hidden_size,
+                        })()
             else:
                 raise
         
