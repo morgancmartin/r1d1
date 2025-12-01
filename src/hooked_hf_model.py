@@ -165,21 +165,33 @@ class HookedHFModel:
             
             # Create wrapper that captures activations
             def make_hook(hook_fn, position):
-                def hook_wrapper(module, input, output):
-                    # For pre hooks, use input; for post hooks, use output
-                    if position == 'pre':
+                if position == 'pre':
+                    def pre_hook_wrapper(module, input):
+                        # For pre hooks, use input
                         activation = input[0] if isinstance(input, tuple) else input
-                    else:
+                        
+                        # Call the user's hook function
+                        # Create a minimal hook point object
+                        hook_point = type('HookPoint', (), {'name': hook_name})()
+                        result = hook_fn(activation, hook_point)
+                        
+                        # Pre-hooks can't modify outputs directly, return None
+                        return None
+                    
+                    return pre_hook_wrapper
+                else:
+                    def post_hook_wrapper(module, input, output):
+                        # For post hooks, use output
                         activation = output[0] if isinstance(output, tuple) else output
+                        
+                        # Call the user's hook function
+                        # Create a minimal hook point object
+                        hook_point = type('HookPoint', (), {'name': hook_name})()
+                        result = hook_fn(activation, hook_point)
+                        
+                        return result if result is not None else output
                     
-                    # Call the user's hook function
-                    # Create a minimal hook point object
-                    hook_point = type('HookPoint', (), {'name': hook_name})()
-                    result = hook_fn(activation, hook_point)
-                    
-                    return result if result is not None else (output if position == 'post' else None)
-                
-                return hook_wrapper
+                    return post_hook_wrapper
             
             # Register the hook
             if position == 'pre':
