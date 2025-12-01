@@ -48,51 +48,32 @@ class ModelLoader:
             )
         except (ValueError, KeyError) as e:
             if "not found" in str(e) or "Valid official model names" in str(e):
-                print(f"Model not in TransformerLens whitelist. Trying to load as Llama architecture...")
+                print(f"Model not in TransformerLens whitelist. Loading via HuggingFace then converting...")
                 
-                # Load HF model and tokenizer first
-                hf_model = AutoModelForCausalLM.from_pretrained(
-                    hf_name,
-                    torch_dtype=torch_dtype,
-                    trust_remote_code=True,
-                )
+                # Load tokenizer first
                 tokenizer = AutoTokenizer.from_pretrained(hf_name, trust_remote_code=True)
                 
-                # Use from_pretrained_no_processing which bypasses the name check
-                print("Using from_pretrained_no_processing to bypass whitelist...")
+                # Use from_pretrained_no_processing - the proper way to load unsupported models
+                print("Using from_pretrained_no_processing...")
                 try:
-                    from transformer_lens.loading_from_pretrained import get_pretrained_model_config
-                    
-                    # Pretend it's a Llama model for config purposes
-                    cfg = get_pretrained_model_config(
-                        "meta-llama/Meta-Llama-3-8B-Instruct",
-                        hf_model=hf_model,
-                        checkpoint_index=None,
-                        checkpoint_value=None,
+                    model = HookedTransformer.from_pretrained_no_processing(
+                        hf_name,
+                        device=device,
+                        dtype=torch_dtype,
+                        tokenizer=tokenizer,
                         fold_ln=False,
                         center_writing_weights=False,
                         center_unembed=False,
-                        dtype=torch_dtype,
                     )
-                    
-                    # Now create HookedTransformer with the config
-                    model = HookedTransformer(cfg, tokenizer=tokenizer, move_to_device=False)
-                    model.load_state_dict(hf_model.state_dict(), strict=False)
-                    model.to(device)
-                    
-                    print(f"Successfully loaded {hf_name} as HookedTransformer using Llama architecture")
+                    print(f"Successfully loaded {hf_name} as HookedTransformer")
                 except Exception as e2:
-                    print(f"Architecture loading failed: {e2}")
-                    print("Falling back to raw HuggingFace model...")
-                    # Return the HF model directly
-                    model = hf_model
-                    model.tokenizer = tokenizer
-                    model.to(device)
-                    # Add minimal compatibility layer
-                    model.cfg = type('obj', (object,), {
-                        'n_layers': hf_model.config.num_hidden_layers,
-                        'd_model': hf_model.config.hidden_size,
-                    })()
+                    print(f"from_pretrained_no_processing failed: {e2}")
+                    print("This model may not be compatible with TransformerLens")
+                    raise RuntimeError(
+                        f"Unable to load {hf_name} with TransformerLens. "
+                        f"The model architecture may not be supported. "
+                        f"Original error: {e2}"
+                    )
             else:
                 raise
         
