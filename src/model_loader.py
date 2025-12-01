@@ -6,6 +6,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from typing import Optional
 
 from .config import ModelConfig, MODELS
+from .hooked_hf_model import load_hooked_hf_model
 
 
 class ModelLoader:
@@ -39,7 +40,7 @@ class ModelLoader:
         # Convert dtype string to torch dtype
         torch_dtype = getattr(torch, dtype)
         
-        # Try loading - if model not in whitelist, use alternative approach
+        # Try loading - if model not in whitelist, use custom HF wrapper
         try:
             model = HookedTransformer.from_pretrained(
                 hf_name,
@@ -48,32 +49,16 @@ class ModelLoader:
             )
         except (ValueError, KeyError) as e:
             if "not found" in str(e) or "Valid official model names" in str(e):
-                print(f"Model not in TransformerLens whitelist. Loading via HuggingFace then converting...")
+                print(f"Model not in TransformerLens whitelist.")
+                print(f"Loading as HookedHFModel (custom wrapper with manual hooks)...")
                 
-                # Load tokenizer first
-                tokenizer = AutoTokenizer.from_pretrained(hf_name, trust_remote_code=True)
-                
-                # Use from_pretrained_no_processing - the proper way to load unsupported models
-                print("Using from_pretrained_no_processing...")
-                try:
-                    model = HookedTransformer.from_pretrained_no_processing(
-                        hf_name,
-                        device=device,
-                        dtype=torch_dtype,
-                        tokenizer=tokenizer,
-                        fold_ln=False,
-                        center_writing_weights=False,
-                        center_unembed=False,
-                    )
-                    print(f"Successfully loaded {hf_name} as HookedTransformer")
-                except Exception as e2:
-                    print(f"from_pretrained_no_processing failed: {e2}")
-                    print("This model may not be compatible with TransformerLens")
-                    raise RuntimeError(
-                        f"Unable to load {hf_name} with TransformerLens. "
-                        f"The model architecture may not be supported. "
-                        f"Original error: {e2}"
-                    )
+                # Use our custom HuggingFace wrapper
+                model = load_hooked_hf_model(
+                    hf_name,
+                    device=device,
+                    torch_dtype=torch_dtype,
+                )
+                print(f"✓ Successfully loaded {hf_name} with custom hooks")
             else:
                 raise
         
