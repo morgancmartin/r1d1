@@ -189,6 +189,7 @@ class ReasoningDirectionExperiment:
             model = self.non_reasoning_model
         
         # Load test data
+        # Default to toy problems if not specified (backward compatibility)
         if test_data_config is None:
             test_data_config = DataConfig(use_toy_problems=True)
         
@@ -276,17 +277,18 @@ class ReasoningDirectionExperiment:
         directions = self.calculate_directions(r_activations, nr_activations)
         
         # Step 4: Run interventions
+        # Use the same data_config for testing as we used for extraction
         if test_on_reasoning_model:
             print("\n" + "=" * 80)
             print("Testing on Reasoning Model")
             print("=" * 80)
-            self.run_interventions(directions, target_model="reasoning")
+            self.run_interventions(directions, test_data_config=data_config, target_model="reasoning")
         
         if test_on_non_reasoning_model:
             print("\n" + "=" * 80)
             print("Testing on Non-Reasoning Model")
             print("=" * 80)
-            self.run_interventions(directions, target_model="non_reasoning")
+            self.run_interventions(directions, test_data_config=data_config, target_model="non_reasoning")
         
         print("\n" + "=" * 80)
         print("EXPERIMENT COMPLETE")
