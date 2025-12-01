@@ -27,6 +27,9 @@ def main():
         dataset_name="gsm8k",
     )
     
+    # Note: DataLoader will use "complex" sampling by default
+    # This selects harder problems from the top 50% by question length
+    
     print("\n" + "="*80)
     print("QUICK GSM8K TEST: Real problems, fast runtime")
     print("="*80)

@@ -1,8 +1,9 @@
 """Data loading utilities for reasoning direction experiments."""
 
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Literal
 from datasets import load_dataset
 from transformer_lens import HookedTransformer
+import random
 
 from .config import DataConfig, TOY_PROBLEMS
 
@@ -19,11 +20,21 @@ class DataLoader:
         self.config = config
         self.dataset = None
         
-    def load_gsm8k(self, num_samples: Optional[int] = None) -> List[Dict[str, str]]:
+    def load_gsm8k(
+        self, 
+        num_samples: Optional[int] = None,
+        sampling: Literal["first", "random", "complex"] = "complex",
+        seed: int = 42,
+    ) -> List[Dict[str, str]]:
         """Load GSM8K math problems.
         
         Args:
             num_samples: Number of samples to load. If None, uses config value.
+            sampling: How to sample:
+                - "first": Take first N problems (simple)
+                - "random": Random sample from whole dataset
+                - "complex": Select harder problems (by length)
+            seed: Random seed for reproducibility
             
         Returns:
             List of problem dictionaries with 'question' and 'answer' keys
@@ -34,8 +45,35 @@ class DataLoader:
         # Load GSM8K dataset
         dataset = load_dataset("gsm8k", "main", split=self.config.dataset_split)
         
-        # Sample and format
-        dataset = dataset.select(range(min(num_samples, len(dataset))))
+        # Sample based on strategy
+        if sampling == "first":
+            # Original behavior: just take first N
+            indices = list(range(min(num_samples, len(dataset))))
+        
+        elif sampling == "random":
+            # Random sample from whole dataset
+            random.seed(seed)
+            indices = random.sample(range(len(dataset)), min(num_samples, len(dataset)))
+        
+        elif sampling == "complex":
+            # Select harder problems (longer questions tend to be more complex)
+            # First, get all problems with their lengths
+            all_items = list(dataset)
+            lengths = [(i, len(item["question"])) for i, item in enumerate(all_items)]
+            
+            # Sort by length (descending) and take from the top 50%
+            lengths.sort(key=lambda x: x[1], reverse=True)
+            complex_indices = [idx for idx, _ in lengths[:len(lengths)//2]]
+            
+            # Sample from the complex ones
+            random.seed(seed)
+            indices = random.sample(complex_indices, min(num_samples, len(complex_indices)))
+        
+        else:
+            raise ValueError(f"Unknown sampling strategy: {sampling}")
+        
+        # Extract problems
+        dataset = dataset.select(indices)
         
         problems = []
         for item in dataset:
