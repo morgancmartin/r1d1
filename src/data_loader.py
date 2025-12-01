@@ -45,6 +45,9 @@ class DataLoader:
         # Load GSM8K dataset
         dataset = load_dataset("gsm8k", "main", split=self.config.dataset_split)
         
+        print(f"GSM8K sampling strategy: {sampling}")
+        print(f"Total problems in dataset: {len(dataset)}")
+        
         # Sample based on strategy
         if sampling == "first":
             # Original behavior: just take first N
@@ -81,6 +84,12 @@ class DataLoader:
                 "question": item["question"],
                 "answer": item["answer"],
             })
+        
+        # Show first question as verification
+        if problems:
+            print(f"Selected {len(problems)} problems")
+            print(f"First question length: {len(problems[0]['question'])} chars")
+            print(f"Sample question: {problems[0]['question'][:100]}...")
         
         return problems
     
