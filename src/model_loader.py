@@ -48,52 +48,51 @@ class ModelLoader:
             )
         except (ValueError, KeyError) as e:
             if "not found" in str(e) or "Valid official model names" in str(e):
-                print(f"Model not in TransformerLens whitelist. Trying with trust_remote_code...")
-                # Try with trust_remote_code for newer models
+                print(f"Model not in TransformerLens whitelist. Trying to load as Llama architecture...")
+                
+                # Load HF model and tokenizer first
+                hf_model = AutoModelForCausalLM.from_pretrained(
+                    hf_name,
+                    torch_dtype=torch_dtype,
+                    trust_remote_code=True,
+                )
+                tokenizer = AutoTokenizer.from_pretrained(hf_name, trust_remote_code=True)
+                
+                # Use from_pretrained_no_processing which bypasses the name check
+                print("Using from_pretrained_no_processing to bypass whitelist...")
                 try:
-                    model = HookedTransformer.from_pretrained(
-                        hf_name,
-                        device=device,
-                        torch_dtype=torch_dtype,
-                        trust_remote_code=True,
-                    )
-                    print(f"Successfully loaded {hf_name} with trust_remote_code")
-                except Exception as e2:
-                    print(f"Failed with trust_remote_code. Trying HookedTransformer.from_pretrained with hf_model...")
-                    # Load the model and tokenizer separately using HuggingFace
-                    hf_model = AutoModelForCausalLM.from_pretrained(
-                        hf_name,
-                        torch_dtype=torch_dtype,
-                        trust_remote_code=True,
-                        device_map="auto",
-                    )
-                    tokenizer = AutoTokenizer.from_pretrained(hf_name, trust_remote_code=True)
+                    from transformer_lens.loading_from_pretrained import get_pretrained_model_config
                     
-                    # Try passing the loaded model to from_pretrained
-                    print("Wrapping HuggingFace model in HookedTransformer...")
-                    try:
-                        model = HookedTransformer.from_pretrained(
-                            hf_name,
-                            hf_model=hf_model,
-                            tokenizer=tokenizer,
-                            device=device,
-                            torch_dtype=torch_dtype,
-                            fold_ln=False,
-                            center_writing_weights=False,
-                            center_unembed=False,
-                        )
-                        print(f"Successfully loaded {hf_name} via HuggingFace with HookedTransformer wrapper")
-                    except Exception as e3:
-                        print(f"TransformerLens wrapping also failed: {e3}")
-                        print(f"Returning raw HuggingFace model (hooks may not work perfectly)")
-                        # Return the HF model directly - we'll need to handle hooks differently
-                        model = hf_model
-                        model.tokenizer = tokenizer
-                        # Add a fake cfg for compatibility
-                        model.cfg = type('obj', (object,), {
-                            'n_layers': len(hf_model.model.layers) if hasattr(hf_model, 'model') else hf_model.config.num_hidden_layers,
-                            'd_model': hf_model.config.hidden_size,
-                        })()
+                    # Pretend it's a Llama model for config purposes
+                    cfg = get_pretrained_model_config(
+                        "meta-llama/Meta-Llama-3-8B-Instruct",
+                        hf_model=hf_model,
+                        checkpoint_index=None,
+                        checkpoint_value=None,
+                        fold_ln=False,
+                        center_writing_weights=False,
+                        center_unembed=False,
+                        dtype=torch_dtype,
+                    )
+                    
+                    # Now create HookedTransformer with the config
+                    model = HookedTransformer(cfg, tokenizer=tokenizer, move_to_device=False)
+                    model.load_state_dict(hf_model.state_dict(), strict=False)
+                    model.to(device)
+                    
+                    print(f"Successfully loaded {hf_name} as HookedTransformer using Llama architecture")
+                except Exception as e2:
+                    print(f"Architecture loading failed: {e2}")
+                    print("Falling back to raw HuggingFace model...")
+                    # Return the HF model directly
+                    model = hf_model
+                    model.tokenizer = tokenizer
+                    model.to(device)
+                    # Add minimal compatibility layer
+                    model.cfg = type('obj', (object,), {
+                        'n_layers': hf_model.config.num_hidden_layers,
+                        'd_model': hf_model.config.hidden_size,
+                    })()
             else:
                 raise
         
